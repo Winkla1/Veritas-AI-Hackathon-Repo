@@ -13,28 +13,33 @@ import streamlit as st
 st.set_page_config(page_title="SafeBorrow", layout="wide")
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
-:root { --ink:#172b36; --muted:#647780; --teal:#087f70; --teal-soft:#e7f4f0; --gold:#e2a83b; }
-.stApp { background:linear-gradient(180deg,#f5f8f6 0%,#f8faf9 40%,#f4f7f6 100%); color:var(--ink); }
-.block-container { max-width:1320px; padding-top:2.1rem; padding-bottom:3rem; }
-html, body, [class*="css"] { font-family:'DM Sans',sans-serif; }
-h1,h2,h3 { font-family:'Manrope','DM Sans',sans-serif; color:var(--ink); letter-spacing:-.035em; }
-h1 { font-size:2.35rem !important; font-weight:800 !important; }
-h2 { font-size:1.45rem !important; font-weight:700 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+:root { --ink:#18312f; --muted:#637874; --teal:#087f70; --teal-soft:#e7f4f0; --line:#e2ebe7; }
+.stApp { background:radial-gradient(ellipse at 92% 0%,#e6f2ed 0,transparent 34%),linear-gradient(180deg,#f8faf9 0%,#f4f7f5 100%); color:var(--ink); }
+.block-container { max-width:1360px; padding-top:2.4rem; padding-bottom:3.5rem; }
+html, body, [class*="css"] { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+h1,h2,h3 { font-family:'Space Grotesk','Inter',sans-serif; color:var(--ink); letter-spacing:-.04em; }
+h1 { font-size:2.55rem !important; font-weight:700 !important; }
+h2 { font-size:1.5rem !important; font-weight:600 !important; }
 [data-testid="stSidebar"] { background:#edf4f1; border-right:1px solid #dce8e3; }
-[data-testid="stSidebar"] h2 { font-size:1.05rem !important; letter-spacing:-.01em; }
-[data-testid="stMetric"] { background:white; border:1px solid #e2ebe6; border-radius:16px; padding:18px 20px; box-shadow:0 5px 20px rgba(29,61,49,.045); }
-[data-testid="stMetricLabel"] p { color:#647780; font-weight:600; }
-[data-testid="stMetricValue"] { color:#172b36; font-family:'Manrope',sans-serif; }
-[data-testid="stVerticalBlockBorderWrapper"] { border-radius:18px; border-color:#e2ebe6; background:rgba(255,255,255,.86); box-shadow:0 6px 24px rgba(29,61,49,.04); }
-.eyebrow { color:var(--teal); font-size:.76rem; text-transform:uppercase; letter-spacing:.14em; font-weight:700; margin-bottom:.35rem; }
-.subcopy { color:#647780; font-size:1.02rem; margin-top:-.55rem; }
-.risk-card { border-radius:18px; padding:20px 24px; margin:.6rem 0 1rem; }
-.risk-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.12em; font-weight:700; opacity:.78; }
-.risk-number { font-family:'Manrope',sans-serif; font-size:2.3rem; font-weight:800; line-height:1.15; margin:.25rem 0; }
+[data-testid="stSidebar"] * { color:#18312f !important; }
+[data-testid="stSidebar"] h2 { font-family:'Space Grotesk','Inter',sans-serif; font-size:1.08rem !important; letter-spacing:-.02em; }
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p { color:#37534d !important; font-weight:600; }
+[data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea { background:#fff !important; color:#18312f !important; border-color:#d6e3dd !important; border-radius:10px !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] > div { background:#fff !important; border-color:#d6e3dd !important; border-radius:10px !important; }
+[data-testid="stSidebar"] [data-testid="stSlider"] [role="slider"] { background:#087f70 !important; }
+[data-testid="stMetric"] { background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:18px; padding:20px 22px; box-shadow:0 8px 28px rgba(26,61,51,.055); }
+[data-testid="stMetricLabel"] p { color:var(--muted); font-weight:600; }
+[data-testid="stMetricValue"] { color:var(--ink); font-family:'Space Grotesk','Inter',sans-serif; }
+[data-testid="stVerticalBlockBorderWrapper"] { border-radius:20px; border-color:var(--line); background:rgba(255,255,255,.88); box-shadow:0 8px 28px rgba(26,61,51,.045); }
+.eyebrow { color:var(--teal); font-size:.74rem; text-transform:uppercase; letter-spacing:.16em; font-weight:700; margin-bottom:.45rem; }
+.subcopy { color:var(--muted); font-size:1.04rem; margin-top:-.55rem; }
+.risk-card { border-radius:20px; padding:22px 26px; margin:.75rem 0 1.15rem; box-shadow:0 8px 22px rgba(26,61,51,.045); }
+.risk-label { font-size:.76rem; text-transform:uppercase; letter-spacing:.13em; font-weight:700; opacity:.8; }
+.risk-number { font-family:'Space Grotesk','Inter',sans-serif; font-size:2.4rem; font-weight:700; line-height:1.2; margin:.3rem 0; letter-spacing:-.04em; }
 .risk-note { font-size:.88rem; opacity:.82; }
 div[data-testid="stDataFrame"] { border-radius:14px; overflow:hidden; }
-button[kind="secondary"] { border-radius:10px; }
+button[kind="secondary"] { border-radius:11px; }
 </style>
 """, unsafe_allow_html=True)
 
