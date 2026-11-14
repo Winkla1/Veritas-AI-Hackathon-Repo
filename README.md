@@ -16,3 +16,5 @@ The app loads its model file next to `app.py`, so it works whether Streamlit sta
 ## Run locally during development
 
 From the repository root, run `streamlit run safeborrow/data/app.py`. If the saved model is missing, run the training notebook first so it creates `safeborrow/data/safeborrow_model.joblib`.
+
+For notebook development, install the packages in `requirements.txt` into `.venv`. On macOS, LightGBM also needs the OpenMP runtime (`brew install libomp`).

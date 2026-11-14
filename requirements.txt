@@ -1,4 +1,6 @@
 joblib
+ipykernel
+lightgbm
 matplotlib
 numpy
 pandas
