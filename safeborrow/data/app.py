@@ -1,8 +1,9 @@
 """SafeBorrow demo app.
 
-Run the notebook first (it saves safeborrow_model.joblib), then in the terminal:
-    streamlit run app.py
+Run locally with Streamlit, or deploy this file to Streamlit Community Cloud.
 """
+from pathlib import Path
+
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,12 +11,39 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="SafeBorrow", layout="wide")
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+:root { --ink:#172b36; --muted:#647780; --teal:#087f70; --teal-soft:#e7f4f0; --gold:#e2a83b; }
+.stApp { background:linear-gradient(180deg,#f5f8f6 0%,#f8faf9 40%,#f4f7f6 100%); color:var(--ink); }
+.block-container { max-width:1320px; padding-top:2.1rem; padding-bottom:3rem; }
+html, body, [class*="css"] { font-family:'DM Sans',sans-serif; }
+h1,h2,h3 { font-family:'Manrope','DM Sans',sans-serif; color:var(--ink); letter-spacing:-.035em; }
+h1 { font-size:2.35rem !important; font-weight:800 !important; }
+h2 { font-size:1.45rem !important; font-weight:700 !important; }
+[data-testid="stSidebar"] { background:#edf4f1; border-right:1px solid #dce8e3; }
+[data-testid="stSidebar"] h2 { font-size:1.05rem !important; letter-spacing:-.01em; }
+[data-testid="stMetric"] { background:white; border:1px solid #e2ebe6; border-radius:16px; padding:18px 20px; box-shadow:0 5px 20px rgba(29,61,49,.045); }
+[data-testid="stMetricLabel"] p { color:#647780; font-weight:600; }
+[data-testid="stMetricValue"] { color:#172b36; font-family:'Manrope',sans-serif; }
+[data-testid="stVerticalBlockBorderWrapper"] { border-radius:18px; border-color:#e2ebe6; background:rgba(255,255,255,.86); box-shadow:0 6px 24px rgba(29,61,49,.04); }
+.eyebrow { color:var(--teal); font-size:.76rem; text-transform:uppercase; letter-spacing:.14em; font-weight:700; margin-bottom:.35rem; }
+.subcopy { color:#647780; font-size:1.02rem; margin-top:-.55rem; }
+.risk-card { border-radius:18px; padding:20px 24px; margin:.6rem 0 1rem; }
+.risk-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.12em; font-weight:700; opacity:.78; }
+.risk-number { font-family:'Manrope',sans-serif; font-size:2.3rem; font-weight:800; line-height:1.15; margin:.25rem 0; }
+.risk-note { font-size:.88rem; opacity:.82; }
+div[data-testid="stDataFrame"] { border-radius:14px; overflow:hidden; }
+button[kind="secondary"] { border-radius:10px; }
+</style>
+""", unsafe_allow_html=True)
 
 
 # ---------- Load the trained model saved by the notebook ----------
 @st.cache_resource
 def load_bundle():
-    return joblib.load("safeborrow_model.joblib")
+    model_path = Path(__file__).with_name("safeborrow_model.joblib")
+    return joblib.load(model_path)
 
 
 try:
@@ -118,48 +146,67 @@ dates, median, sims = simulate(start_month, term_weeks)
 plan, total = repayment_plan(amount, rate, term_weeks, schedule)
 risk, cash = missed_payment_risk(sims, plan, margin, daily_costs, start_cash)
 
-st.title("SafeBorrow")
-st.caption("Can my business actually afford this loan?")
+st.markdown('<div class="eyebrow">Cash-flow confidence for small businesses</div>', unsafe_allow_html=True)
+st.title("Know what you can safely borrow.")
+st.markdown('<div class="subcopy">See how a loan could fit your business before you accept the offer.</div>', unsafe_allow_html=True)
 
 if risk <= SAFE_RISK:
-    colour, verdict = "green", "Low risk"
+    risk_colour, verdict, risk_bg = "#087f70", "Comfortable buffer", "#e7f4f0"
 elif risk <= 0.25:
-    colour, verdict = "orange", "Risky"
+    risk_colour, verdict, risk_bg = "#b97812", "Worth a closer look", "#fff4dc"
 else:
-    colour, verdict = "red", "High risk"
+    risk_colour, verdict, risk_bg = "#b94b45", "High chance of strain", "#fcebea"
+
+safe = safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash)
+st.markdown(f'''<div class="risk-card" style="background:{risk_bg};color:{risk_colour}">
+<div class="risk-label">Estimated missed-payment chance</div>
+<div class="risk-number">{risk:.0%} <span style="font-size:1.05rem;font-weight:700">· {verdict}</span></div>
+<div class="risk-note">Based on 1,000 simulated cash-flow paths over the loan period.</div></div>''', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown("**Chance of missing a repayment**")
-    st.markdown(f"<h1 style='color:{colour}; margin:0'>{risk:.0%}</h1><b style='color:{colour}'>{verdict}</b>",
-                unsafe_allow_html=True)
+    st.metric("Loan amount", f"GHS {amount:,.0f}", f"{term_weeks} week term")
 with col2:
-    st.metric("Total you will repay", f"GHS {total:,.0f}", f"GHS {total - amount:,.0f} interest", delta_color="off")
+    st.metric("Total repayment", f"GHS {total:,.0f}", f"GHS {total - amount:,.0f} interest", delta_color="off")
 with col3:
-    safe = safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash)
-    st.metric(f"Safe loan size ({SCHEDULE_NAMES[schedule].lower()})", f"GHS {safe:,}",
-              help="The biggest loan that keeps the chance of missing a repayment at 10% or less.")
+    st.metric("Suggested safe limit", f"GHS {safe:,}", "10% risk threshold",
+              help="The largest tested loan amount that keeps estimated missed-payment risk at 10% or less.")
 
-st.subheader("Your cash balance in 100 possible futures")
-fig, ax = plt.subplots(figsize=(11, 4))
-for i in range(100):
-    ax.plot(dates, cash[i], color="tab:blue", alpha=0.15)
-ax.plot(dates, np.median(cash, axis=0), color="tab:blue", linewidth=2, label="typical future")
-ax.axhline(0, color="red", linewidth=2, label="cash runs out")
-ax.set_ylabel("GHS")
-ax.legend(loc="upper left")
-st.pyplot(fig)
+st.write("")
+chart_col, info_col = st.columns([1.65, 1], gap="large")
+with chart_col:
+    with st.container(border=True):
+        st.subheader("Cash through the loan period")
+        st.caption("Simulated business cash balance after operating costs and repayments")
+        fig, ax = plt.subplots(figsize=(10, 4.1))
+        low, high = np.percentile(cash, [10, 90], axis=0)
+        typical = np.median(cash, axis=0)
+        ax.fill_between(dates, low, high, color="#b8ded2", alpha=.55, label="middle 80% of outcomes")
+        ax.plot(dates, typical, color="#087f70", linewidth=2.8, label="typical outcome")
+        ax.axhline(0, color="#cc6d61", linewidth=1.5, linestyle=(0, (4, 4)), label="zero cash")
+        ax.set_ylabel("Cash balance (GHS)", color="#647780", labelpad=10)
+        ax.grid(axis="y", color="#e8eeeb", linewidth=.8)
+        ax.spines[["top", "right", "left"]].set_visible(False)
+        ax.spines["bottom"].set_color("#dce6e1")
+        ax.tick_params(colors="#647780", length=0, pad=8)
+        ax.legend(loc="upper left", frameon=False, ncol=2, fontsize=8)
+        fig.tight_layout()
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
 
-st.subheader("Which schedule is safest?")
 rows = []
 for sch in SCHEDULE_NAMES:
     p, _ = repayment_plan(amount, rate, term_weeks, sch)
     r, _ = missed_payment_risk(sims, p, margin, daily_costs, start_cash)
-    rows.append({"Schedule": SCHEDULE_NAMES[sch],
-                 "Risk for this loan": f"{r:.0%}",
-                 "Safe loan size": f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash):,}"})
-st.table(pd.DataFrame(rows).set_index("Schedule"))
+    rows.append({"Repayment timing": SCHEDULE_NAMES[sch],
+                 "Missed-payment chance": f"{r:.0%}",
+                 "Safe limit": f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash):,}"})
+with info_col:
+    with st.container(border=True):
+        st.subheader("Compare repayment timing")
+        st.caption("The same loan can feel very different depending on when payments are due.")
+        st.dataframe(pd.DataFrame(rows).set_index("Repayment timing"), use_container_width=True)
+        st.caption("Safe limit keeps estimated risk at or below 10%.")
 
-st.caption("Example business: real daily rental demand (Bike Sharing dataset, 2011–2012) scaled to GHS. "
-           "Risk comes from 1,000 simulated futures built from the forecaster's real errors. "
-           "Assumes the loan money is spent straight away.")
+st.markdown("---")
+st.caption("Illustrative estimate using historical bike-rental demand patterns scaled to GHS. Actual sales and outcomes may differ. Assumes the loan funds are spent immediately.")
