@@ -1,13 +1,30 @@
-# SafeBorrow: See the cash-flow risk before taking a loan
+# SafeBorrow — Finance Track
 
-Small businesses can receive loan offers that look manageable but become difficult to repay when sales dip or operating costs use up available cash. SafeBorrow is a finance prototype that helps an owner explore how a loan might affect day-to-day cash flow before accepting it.
+**A cash-flow planning prototype for small businesses considering a loan.** A loan can look affordable on paper and still leave a shop short of cash during a slow week. SafeBorrow helps an owner explore how expected sales, operating costs, available cash and repayment timing interact before accepting an offer.
 
-The owner can use an example business or upload at least 56 days of daily sales in a CSV. The app trains three LightGBM quantile models to estimate low, typical and high sales. It creates 1,000 possible sales paths by resampling consecutive seven-day forecast errors, then tracks cash after operating costs and scheduled repayments. The dashboard shows an estimated chance of missing a payment, total repayment, a suggested loan limit at a 10% simulated-risk threshold, and a cash-flow chart. Owners can compare daily, weekly and end-of-term repayments.
+## How it works
 
-SafeBorrow includes Ghana public holidays and can mark a repeating market-day cycle. Market-day effects can only be learned when historical market days are labeled in the uploaded data. It also requests a local weather forecast for the first loan week; weather affects the sales estimate only when the model has matching historical weather data. The owner can adjust an assumed sales uplift for equipment purchased with the loan. This uplift is a scenario assumption, not a measured causal effect.
+Use the example business or upload at least 56 daily observations (`Date`, `Sales`). Three LightGBM quantile models forecast low, typical and high sales. The app resamples consecutive seven-day forecast errors into 1,000 possible sales paths, then tracks cash after costs and loan repayments. It reports estimated missed-payment risk, total repayment, a suggested loan limit at a 10% simulated-risk threshold, and a cash-flow chart. Owners can compare daily, weekly and end-of-term payments.
 
-The example model uses Washington, DC bike-rental demand from 2011–2012, retrieved through scikit-learn’s OpenML interface and scaled to an average of GHS 400 per day. On the final 12 weeks held out from training, the updated model achieved GHS 81 mean absolute error, compared with GHS 206 for a weekday-average baseline. Its 10th–90th percentile forecast interval covered 51% of held-out days, below the intended 80%. The model improves on the baseline forecast, but its uncertainty is under-calibrated, so its risk estimates are not validated for lending decisions.
+The app adds Ghana public holidays, optional repeating market days, a local 16-day weather forecast and a user-set equipment sales uplift. Market-day impact requires historic labels; weather impact requires matching historical weather fields. The example is Washington, DC bike-rental demand from 2011–2012, scaled to GHS—not Ghanaian shop sales. The equipment uplift is a scenario assumption, not a measured causal effect.
 
-The example data is not Ghanaian small-business sales, and its learned weather response may not transfer to local businesses. Real market-day patterns, loan fees and household cash flows may also differ. SafeBorrow is a planning prototype for discussion—not financial advice, a credit decision, or a guarantee of repayment. Its potential impact is to make repayment trade-offs easier to examine; no real-world impact has yet been measured.
+## Evaluation and limitations
 
-**Credits:** UCI Bike Sharing Dataset; scikit-learn `fetch_openml`; LightGBM; Streamlit; Python Holidays; Open-Meteo Forecast API. OpenAI Codex assisted with code editing, debugging and documentation.
+On the final 12 weeks held out from training, the updated example reported **GHS 81 MAE**, versus **GHS 206** for a weekday-average baseline. Its 10th–90th percentile interval covered **51%** of held-out days, below the 80% target. That under-calibration means the simulated risk is not validated for credit underwriting. The weather response learned from bike rentals may not transfer to Ghanaian businesses; real sales, local market patterns, loan fees and household cash flows can differ.
+
+**SafeBorrow is a finance prototype, not financial advice, a credit decision or a repayment guarantee.** Its potential impact is to make repayment trade-offs easier to examine; no real-world impact has yet been measured.
+
+## Run it
+
+Install with `python -m pip install -r requirements.txt`, then run `streamlit run safeborrow/data/app.py` from the repository root. macOS also needs `brew install libomp`. To retrain the example, run `safeborrow/data/safeborrow.ipynb`; the app includes a CSV template. Demo with public or synthetic data, not personal or confidential records.
+
+## Credits
+
+- Example data: [UCI Bike Sharing Dataset](https://archive.ics.uci.edu/dataset/275/bike-sharing-dataset), retrieved as `Bike_Sharing_Demand` through scikit-learn’s [`fetch_openml`](https://scikit-learn.org/stable/modules/generated/sklearn.datasets.fetch_openml.html).
+- Weather: [Open-Meteo Forecast API](https://open-meteo.com/en/docs). Ghana holidays: [Python Holidays](https://github.com/vacanza/holidays).
+- Model and interface: [LightGBM](https://lightgbm.readthedocs.io/) and [Streamlit](https://docs.streamlit.io/).
+- AI coding assistance: OpenAI Codex (code editing, debugging and documentation).
+
+## Demo flow
+
+Set business inputs and a loan offer; show risk, safe limit and cash-flow paths. Compare repayment timings, upload synthetic sales, then adjust the equipment uplift and discuss its effect on risk.
