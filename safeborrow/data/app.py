@@ -102,9 +102,10 @@ GHANA_LOCATIONS = {
 CSV_TEMPLATE = "Date,Sales,Market_Day,Temperature_C,Feels_Like_C,Humidity_Pct,Rain_mm,Wind_Speed_kmh,Weather\n2026-01-01,420,0,29,32,75,0,12,2\n"
 
 
-def repayment_plan(amount, monthly_rate, term_weeks, schedule):
+def repayment_plan(amount, monthly_rate, term_weeks, schedule, processing_fee=0):
     n_days = term_weeks * 7
-    total = amount * (1 + monthly_rate * n_days / 30)
+    interest = amount * monthly_rate * n_days / 30
+    total = amount + interest + processing_fee
     days = np.arange(1, n_days + 1)
     if schedule == "daily":
         due = days
@@ -114,10 +115,11 @@ def repayment_plan(amount, monthly_rate, term_weeks, schedule):
         due = np.array([n_days])
     plan = np.zeros(n_days)
     plan[due - 1] = total / len(due)
-    return plan, total
+    return plan, total, interest
 
 
 def missed_payment_risk(sales_sims, plan, margin, daily_costs, start_cash):
+    sales_sims = sales_sims[:, :len(plan)]
     profit = sales_sims * margin - daily_costs
     cash = start_cash + profit.cumsum(axis=1) - plan.cumsum()
     due = plan > 0
@@ -125,10 +127,11 @@ def missed_payment_risk(sales_sims, plan, margin, daily_costs, start_cash):
     return missed.mean(), cash
 
 
-def safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash):
+def safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash,
+                processing_fee=0):
     best = 0
     for a in range(50, 5001, 50):
-        plan, _ = repayment_plan(a, rate, term_weeks, schedule)
+        plan, _, _ = repayment_plan(a, rate, term_weeks, schedule, processing_fee)
         risk, _ = missed_payment_risk(sims, plan, margin, daily_costs, start_cash)
         if risk > SAFE_RISK:
             break
@@ -156,23 +159,46 @@ with st.sidebar:
     st.header("The loan offer")
     amount = st.slider("Loan amount (GHS)", 50, 3000, 800, step=50)
     rate = st.slider("Interest per month (%)", 0.0, 30.0, 10.0, step=0.5) / 100
+    processing_fee = st.number_input("One-time loan fee (GHS)", 0, 1000, 0, step=10)
     term_weeks = st.slider("Loan length (weeks)", 1, 12, 4)
     today = date.today()
     loan_start = st.date_input("Loan starts on", value=today,
                                min_value=today, max_value=today + timedelta(days=9))
     schedule = st.radio("Repayment schedule", list(SCHEDULE_NAMES), format_func=SCHEDULE_NAMES.get)
     sales_uplift = st.slider("Sales increase from new equipment (%)", 0, 30, 10, step=5) / 100
+    stress_drop = st.slider("Downside sales scenario (%)", 0, 60, 20, step=5) / 100
+    compare_offer = st.checkbox("Compare a second loan offer", value=False)
+    if compare_offer:
+        st.caption("Offer B")
+        amount_b = st.number_input("Offer B amount (GHS)", 50, 30000, 1000, step=50)
+        rate_b = st.number_input("Offer B monthly interest (%)", 0.0, 50.0, 12.0, step=0.5) / 100
+        fee_b = st.number_input("Offer B one-time fee (GHS)", 0, 5000, 0, step=10)
+        term_b = st.slider("Offer B term (weeks)", 1, 52, 4)
+        schedule_b = st.selectbox("Offer B repayment schedule", list(SCHEDULE_NAMES),
+                                  format_func=SCHEDULE_NAMES.get, key="schedule_b")
 
     st.header("Local market context")
     location = st.selectbox("Business location", list(GHANA_LOCATIONS))
     use_market_days = st.checkbox("Include market days", value=False)
     market_interval = None
     next_market_date = None
+    explicit_market_dates = None
     if use_market_days:
-        market_interval = st.selectbox("Market day repeats every", [2, 3, 4, 5, 6, 7, 14], index=4,
-                                       format_func=lambda days: f"{days} days")
-        next_market_date = st.date_input("Next market day", value=loan_start,
-                                         min_value=today, max_value=loan_start + timedelta(days=14))
+        market_mode = st.radio("How should we add market days?", ["Repeating cycle", "Enter dates"])
+        if market_mode == "Repeating cycle":
+            market_interval = st.selectbox("Market day repeats every", [2, 3, 4, 5, 6, 7, 14], index=4,
+                                           format_func=lambda days: f"{days} days")
+            next_market_date = st.date_input("Next market day", value=loan_start,
+                                             min_value=today, max_value=loan_start + timedelta(days=14))
+        else:
+            market_text = st.text_input("Market dates (YYYY-MM-DD, comma separated)",
+                                        placeholder="2026-11-20, 2026-11-26")
+            try:
+                explicit_market_dates = [pd.Timestamp(item.strip()) for item in market_text.split(",")
+                                         if item.strip()]
+            except (ValueError, TypeError):
+                st.error("Enter market dates as YYYY-MM-DD, separated by commas.")
+                st.stop()
 
 if data_source == "Upload a CSV":
     if uploaded_file is None:
@@ -182,7 +208,7 @@ if data_source == "Upload a CSV":
     try:
         with st.spinner("Learning your sales pattern from the uploaded history…"):
             bundle = cached_upload_model(csv_bytes)
-        _, weather_fields, has_market_history = parse_sales_csv(csv_bytes)
+        _, weather_fields, has_market_history, csv_quality = parse_sales_csv(csv_bytes)
     except Exception as exc:
         st.error(f"Could not use this sales file: {exc}")
         st.stop()
@@ -192,6 +218,7 @@ else:
     weather_fields = [name for name in bundle.get("feature_cols", [])
                       if name in ("temperature_c", "feels_like_c", "humidity_pct", "rain_mm", "wind_speed_kmh", "weather")]
     has_market_history = bundle.get("has_market_history", False)
+    csv_quality = bundle.get("csv_quality")
 
 weather_error = None
 try:
@@ -201,17 +228,33 @@ except Exception as exc:
     weather_error = str(exc)
 
 try:
-    dates, median, sims, future_features, weather_used = forecast_sales(
-        bundle, loan_start, term_weeks, market_interval, next_market_date,
-        weather=weather_forecast)
+    forecast_term = max(term_weeks, term_b) if compare_offer else term_weeks
+    dates_all, median_all, sims_all, future_features_all, weather_used = forecast_sales(
+        bundle, loan_start, forecast_term, market_interval, next_market_date,
+        weather=weather_forecast, explicit_market_dates=explicit_market_dates)
+    current_days = term_weeks * 7
+    dates = dates_all[:current_days]
+    median = median_all[:current_days]
+    sims = sims_all[:, :current_days]
+    future_features = future_features_all.iloc[:current_days].reset_index(drop=True)
 except Exception as exc:
     st.error(f"Could not create this forecast: {exc}")
     st.stop()
 
 median *= 1 + sales_uplift
 sims *= 1 + sales_uplift
-plan, total = repayment_plan(amount, rate, term_weeks, schedule)
+plan, total, interest = repayment_plan(amount, rate, term_weeks, schedule, processing_fee)
 risk, cash = missed_payment_risk(sims, plan, margin, daily_costs, start_cash)
+stressed_risk, stressed_cash = missed_payment_risk(sims * (1 - stress_drop), plan,
+                                                    margin, daily_costs, start_cash)
+minimum_cash = cash[:, plan > 0].min(axis=1)
+buffer_target = max(0, -float(np.percentile(minimum_cash, 10)))
+offer_b = None
+if compare_offer:
+    plan_b, total_b, interest_b = repayment_plan(amount_b, rate_b, term_b, schedule_b, fee_b)
+    sims_b = sims_all[:, :len(plan_b)]
+    risk_b, cash_b = missed_payment_risk(sims_b, plan_b, margin, daily_costs, start_cash)
+    offer_b = (plan_b, total_b, interest_b, risk_b, cash_b)
 
 # ---------- Results ----------
 
@@ -224,6 +267,30 @@ feature_cols = bundle.get("feature_cols") or list(bundle["models"][0.5].feature_
 if not bundle.get("uploaded") and not any(
         name in feature_cols for name in ("temperature_c", "feels_like_c", "humidity_pct", "weather")):
     st.warning("The saved example model predates the Ghana holiday and weather features. Rerun the updated training notebook once to train those effects into the example forecast.")
+if csv_quality:
+    with st.expander("Sales file checks", expanded=bool(bundle.get("uploaded"))):
+        st.write(f"**{csv_quality['rows']:,} valid rows** were used. Repeated dates are combined; missing dates are treated as zero-sales days.")
+        qcols = st.columns(4)
+        qcols[0].metric("Invalid dates", csv_quality["invalid_date_rows"])
+        qcols[1].metric("Invalid sales", csv_quality["invalid_sales_rows"] + csv_quality["negative_sales_rows"])
+        qcols[2].metric("Duplicate date rows", csv_quality["duplicate_date_rows"])
+        qcols[3].metric("Missing dates filled", csv_quality["missing_dates_filled_zero"])
+        st.caption(f"{csv_quality['extreme_sales_days']} unusually low/high daily values were retained so genuine spikes are not silently removed.")
+        if csv_quality["invalid_date_rows"] or csv_quality["invalid_sales_rows"] or csv_quality["negative_sales_rows"]:
+            st.warning("Some rows were excluded because the date or sales value was invalid or negative. Review the source file if you did not expect this.")
+
+evaluation = bundle.get("evaluation")
+if evaluation:
+    with st.expander("How accurate was the model on historical days?", expanded=False):
+        e1, e2, e3 = st.columns(3)
+        e1.metric("Holdout forecast error (MAE)", f"GHS {evaluation['mae']:,.0f}")
+        e2.metric("Weekday-average baseline", f"GHS {evaluation['baseline_mae']:,.0f}")
+        e3.metric("80% interval coverage", f"{evaluation['coverage']:.0%}",
+                  help="Share of held-out days that fell between the model's 10th and 90th percentile predictions.")
+        st.caption(f"Measured on the last {evaluation['holdout_days']} historical days, held back from training. This is a back-test, not a guarantee of future performance.")
+else:
+    with st.expander("How accurate was the model on historical days?", expanded=False):
+        st.caption("This saved example model predates the in-app accuracy summary. Upload a CSV to see its holdout score, or rerun the training notebook to refresh the example model.")
 if weather_error:
     st.warning("Live weather is unavailable right now. The forecast continues without current weather data.")
 elif weather_forecast is not None:
@@ -249,7 +316,8 @@ elif risk <= 0.25:
 else:
     risk_colour, verdict, risk_bg = "#ff8876", "High chance of strain", "#4c2521"
 
-safe = safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash)
+safe = safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash,
+                   processing_fee)
 st.markdown(f'''<div class="risk-card" style="background:{risk_bg};color:{risk_colour}">
 <div class="risk-label">Estimated missed-payment chance</div>
 <div class="risk-number">{risk:.0%} <span style="font-size:1.05rem;font-weight:700">· {verdict}</span></div>
@@ -259,10 +327,12 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Loan amount", f"GHS {amount:,.0f}", f"{term_weeks} week term")
 with col2:
-    st.metric("Total repayment", f"GHS {total:,.0f}", f"GHS {total - amount:,.0f} interest", delta_color="off")
+    st.metric("Total repayment", f"GHS {total:,.0f}",
+              f"GHS {interest:,.0f} interest + {processing_fee:,.0f} fee", delta_color="off")
 with col3:
     st.metric("Suggested safe limit", f"GHS {safe:,}", "10% risk threshold",
               help="The largest tested loan amount that keeps estimated missed-payment risk at 10% or less.")
+st.caption("Interest is estimated as simple interest on the original loan amount. The one-time fee is added to total repayment and spread across the selected payment dates.")
 
 st.write("")
 chart_col, info_col = st.columns([1.65, 1], gap="large")
@@ -277,6 +347,9 @@ with chart_col:
         ax.set_facecolor("#492621")
         ax.fill_between(dates, low, high, color="#ff693e", alpha=.24, label="middle 80% of outcomes")
         ax.plot(dates, typical, color="#f6dfd5", linewidth=2.8, label="typical outcome")
+        stress_typical = np.median(stressed_cash[:, :len(dates)], axis=0)
+        ax.plot(dates, stress_typical, color="#ff9a79", linewidth=1.5,
+                linestyle=(0, (5, 4)), label=f"sales −{stress_drop:.0%} scenario")
         ax.axhline(0, color="#ff693e", linewidth=1.5, linestyle=(0, (4, 4)), label="zero cash")
         ax.set_ylabel("Cash balance (GHS)", color="#d4b6ab", labelpad=10)
         ax.grid(axis="y", color="#63352d", linewidth=.8)
@@ -290,10 +363,10 @@ with chart_col:
 
 rows = []
 for sch in SCHEDULE_NAMES:
-    p, _ = repayment_plan(amount, rate, term_weeks, sch)
+    p, _, _ = repayment_plan(amount, rate, term_weeks, sch, processing_fee)
     r, _ = missed_payment_risk(sims, p, margin, daily_costs, start_cash)
     rows.append((SCHEDULE_NAMES[sch], f"{r:.0%}",
-                 f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash):,}"))
+                 f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash, processing_fee):,}"))
 table_html = "<table class='schedule-table'><thead><tr><th>Repayment timing</th><th>Miss risk</th><th>Safe limit</th></tr></thead><tbody>"
 table_html += "".join(f"<tr><td>{timing}</td><td>{miss_risk}</td><td>{safe_limit}</td></tr>"
                       for timing, miss_risk, safe_limit in rows)
@@ -304,6 +377,60 @@ with info_col:
         st.caption("The same loan can feel very different depending on when payments are due.")
         st.markdown(table_html, unsafe_allow_html=True)
         st.caption("Safe limit keeps estimated risk at or below 10%.")
+
+st.write("")
+left, right = st.columns([1.1, 1], gap="large")
+with left:
+    with st.container(border=True):
+        st.subheader("Downside and cash buffer")
+        st.caption(f"If sales come in {stress_drop:.0%} below forecast, estimated missed-payment chance rises to **{stressed_risk:.0%}** (base case: {risk:.0%}).")
+        st.metric("Extra cash buffer for 90% of paths", f"GHS {buffer_target:,.0f}",
+                  f"Cash on hand: GHS {start_cash:,.0f}")
+        st.caption("Buffer is the amount needed at the start to keep the 10th-percentile simulated cash balance at or above zero on repayment dates.")
+        st.markdown("**Why this estimate looks this way**")
+        typical_profit = float(np.median(sims * margin - daily_costs))
+        max_installment = float(plan.max())
+        low_cash_share = float(np.mean(minimum_cash < 0))
+        st.write(f"Typical daily profit after the margin and daily costs is about **GHS {typical_profit:,.0f}**. The largest scheduled installment is **GHS {max_installment:,.0f}**. In the simulated base case, **{low_cash_share:.0%}** of paths fall below zero on a payment date.")
+        st.caption("These are scenario diagnostics based on your inputs, not a causal explanation or a credit decision.")
+with right:
+    with st.container(border=True):
+        st.subheader("Repayments near local dates")
+        st.caption("Ghana public holidays and the selected market-day calendar are shown alongside scheduled payments.")
+        cal = future_features.copy()
+        cal["due"] = plan > 0
+        cal = cal[cal["due"] | cal["holiday"].astype(bool) | cal["market_day"].astype(bool)].copy()
+        cal["Date"] = pd.to_datetime(cal["Date"]).dt.strftime("%a, %d %b %Y")
+        cal["Event"] = cal.apply(lambda row: ", ".join(
+            label for label, condition in (("Repayment", row["due"]),
+                                           ("Market day", bool(row["market_day"])),
+                                           ("Public holiday", bool(row["holiday"]))) if condition), axis=1)
+        cal["Payment (GHS)"] = plan
+        if cal.empty:
+            st.write("No repayment or market/holiday dates in this loan window.")
+        else:
+            st.dataframe(cal[["Date", "Event", "Payment (GHS)"]].head(24),
+                         hide_index=True, use_container_width=True)
+        due_near_market = int(sum(bool(future_features.iloc[max(0, i-1):i+2]["market_day"].any())
+                                  for i in np.flatnonzero(plan > 0)))
+        if use_market_days:
+            st.caption(f"{due_near_market} scheduled payment date(s) fall within one day of a market day.")
+
+if offer_b:
+    st.write("")
+    with st.container(border=True):
+        st.subheader("Compare loan offers")
+        _, _, _, risk_b, _ = offer_b
+        compare = pd.DataFrame([
+            {"Offer": "A · current offer", "Amount": f"GHS {amount:,.0f}",
+             "Term": f"{term_weeks} weeks", "Repayment": f"GHS {total:,.0f}",
+             "Interest + fees": f"GHS {interest + processing_fee:,.0f}", "Missed-payment chance": f"{risk:.0%}"},
+            {"Offer": "B · comparison", "Amount": f"GHS {amount_b:,.0f}",
+             "Term": f"{term_b} weeks", "Repayment": f"GHS {total_b:,.0f}",
+             "Interest + fees": f"GHS {interest_b + fee_b:,.0f}", "Missed-payment chance": f"{risk_b:.0%}"},
+        ])
+        st.dataframe(compare, hide_index=True, use_container_width=True)
+        st.caption("Both offers use the same sales scenarios and business assumptions; schedules and terms are applied separately.")
 
 st.markdown("---")
 st.caption("Ghana public holidays are flagged in the calendar. The selected equipment uplift is an assumption applied to forecast sales. Actual demand and loan outcomes may differ. Assumes the loan funds are spent immediately.")

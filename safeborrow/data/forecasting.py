@@ -56,11 +56,15 @@ def parse_sales_csv(content):
     frame = frame.rename(columns=rename)
     frame["Date"] = pd.to_datetime(frame["date"], errors="coerce").dt.normalize()
     frame["Sales"] = pd.to_numeric(frame["sales"].astype(str).str.replace(",", "", regex=False), errors="coerce")
+    invalid_date_rows = int(frame["Date"].isna().sum())
+    invalid_sales_rows = int(frame["Sales"].isna().sum())
+    negative_sales_rows = int((frame["Sales"] < 0).sum())
     frame = frame.dropna(subset=["Date", "Sales"])
     frame = frame[frame["Sales"] >= 0]
     if frame.empty:
         raise ValueError("No valid, non-negative sales values and dates were found.")
 
+    duplicate_date_rows = int(frame.duplicated(subset=["Date"], keep=False).sum())
     aggregations = {"Sales": ("Sales", "sum")}
     for field in ("holiday", "market_day"):
         if field in frame:
@@ -77,7 +81,9 @@ def parse_sales_csv(content):
     if len(daily) < 56:
         raise ValueError(f"Found {len(daily)} distinct sales days. Upload at least 56 days; 6+ months gives a more useful forecast.")
     # A missing date in a daily sales export is treated as a no-sales day.
-    daily = daily.reindex(pd.date_range(daily.index.min(), daily.index.max(), freq="D"))
+    date_range = pd.date_range(daily.index.min(), daily.index.max(), freq="D")
+    missing_dates = int(len(date_range) - len(daily))
+    daily = daily.reindex(date_range)
     daily.index.name = "Date"
     daily["Sales"] = daily["Sales"].fillna(0)
     for field in ("holiday", "market_day"):
@@ -87,7 +93,16 @@ def parse_sales_csv(content):
     for field in weather_fields:
         daily[field] = daily[field].interpolate(limit_direction="both")
     daily = daily.reset_index()
-    return daily, weather_fields, "market_day" in frame.columns
+    q01, q99 = daily["Sales"].quantile([0.01, 0.99])
+    quality = {
+        "rows": len(frame), "invalid_date_rows": invalid_date_rows,
+        "invalid_sales_rows": invalid_sales_rows,
+        "negative_sales_rows": negative_sales_rows,
+        "duplicate_date_rows": duplicate_date_rows,
+        "missing_dates_filled_zero": missing_dates,
+        "extreme_sales_days": int(((daily["Sales"] < q01) | (daily["Sales"] > q99)).sum()),
+    }
+    return daily, weather_fields, "market_day" in frame.columns, quality
 
 
 def _holiday_set(dates):
@@ -125,7 +140,7 @@ def make_features(frame, start, feature_cols):
 
 
 def train_sales_model(content):
-    daily, weather_fields, has_market_history = parse_sales_csv(content)
+    daily, weather_fields, has_market_history, quality = parse_sales_csv(content)
     feature_cols = BASE_FEATURES + weather_fields
     start = daily["Date"].min()
     gh_holidays = holidays.country_holidays(
@@ -150,19 +165,40 @@ def train_sales_model(content):
                                   num_leaves=9, min_child_samples=8, verbose=-1)
         model.fit(X_train, np.log1p(train["Sales"].to_numpy()))
         models[quantile] = model
-    median_valid = np.maximum(np.expm1(models[0.5].predict(X_valid)), 1.0)
+    predictions = {q: np.maximum(np.expm1(model.predict(X_valid)), 0)
+                   for q, model in models.items()}
+    median_valid = np.maximum(predictions[0.5], 1.0)
+    actual = valid["Sales"].to_numpy()
+    recent = train[train["Date"] > valid["Date"].min() - pd.Timedelta(days=28)]
+    dow_avg = recent.groupby(recent["Date"].dt.dayofweek)["Sales"].mean()
+    baseline = valid["Date"].dt.dayofweek.map(dow_avg).fillna(train["Sales"].mean()).to_numpy()
+    evaluation = {
+        "mae": float(np.mean(np.abs(actual - median_valid))),
+        "baseline_mae": float(np.mean(np.abs(actual - baseline))),
+        "coverage": float(np.mean((actual >= predictions[0.1]) & (actual <= predictions[0.9]))),
+        "holdout_days": len(valid),
+    }
     ratios = np.clip(valid["Sales"].to_numpy() / median_valid, 0.05, 5.0)
     block_size = 7
     blocks = np.array([ratios[i:i + block_size]
                        for i in range(len(ratios) - block_size + 1)])
     if len(blocks) == 0:
         blocks = np.ones((1, block_size))
+    # Score on held-out days first, then refit the serving models on all history.
+    X_all = make_features(daily, start, feature_cols)
+    for quantile in (0.1, 0.5, 0.9):
+        model = lgb.LGBMRegressor(objective="quantile", alpha=quantile,
+                                  n_estimators=220, learning_rate=0.04,
+                                  num_leaves=9, min_child_samples=8, verbose=-1)
+        model.fit(X_all, np.log1p(daily["Sales"].to_numpy()))
+        models[quantile] = model
     return {
         "models": models, "blocks": blocks, "block_size": block_size,
         "start": start, "forecast_year": int(daily["Date"].max().year + 1),
         "feature_cols": feature_cols, "weather_medians": medians,
         "has_market_history": has_market_history, "uploaded": True,
-        "history_days": len(daily),
+        "history_days": len(daily), "evaluation": evaluation,
+        "csv_quality": quality,
     }
 
 
@@ -204,11 +240,14 @@ def _weather_category(code):
 
 
 def forecast_sales(bundle, start_date, term_weeks, market_interval,
-                   next_market_date, weather=None, n_sims=1000, seed=0):
+                   next_market_date, weather=None, n_sims=1000, seed=0,
+                   explicit_market_dates=None):
     start_date = pd.Timestamp(start_date)
     dates = pd.date_range(start_date, periods=term_weeks * 7, freq="D")
     market_dates = None
-    if market_interval and next_market_date:
+    if explicit_market_dates:
+        market_dates = pd.to_datetime(explicit_market_dates).tolist()
+    elif market_interval and next_market_date:
         anchor = pd.Timestamp(next_market_date)
         market_dates = [d for d in dates if (d - anchor).days % market_interval == 0]
     fut = make_calendar_frame(dates, bundle["start"], market_dates)

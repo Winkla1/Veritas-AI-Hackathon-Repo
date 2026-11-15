@@ -6,7 +6,7 @@
 
 Use the example business or upload at least 56 daily observations (`Date`, `Sales`). Three LightGBM quantile models forecast low, typical and high sales. The app resamples consecutive seven-day forecast errors into 1,000 possible sales paths, then tracks cash after costs and loan repayments. It reports estimated missed-payment risk, total repayment, a suggested loan limit at a 10% simulated-risk threshold, and a cash-flow chart. Owners can compare daily, weekly and end-of-term payments.
 
-The app adds Ghana public holidays, optional repeating market days, a local 16-day weather forecast and a user-set equipment sales uplift. Market-day impact requires historic labels; weather impact requires matching historical weather fields. The example is Washington, DC bike-rental demand from 2011–2012, scaled to GHS—not Ghanaian shop sales. The equipment uplift is a scenario assumption, not a measured causal effect.
+The app adds Ghana public holidays, repeating or manually entered market dates, a local 16-day weather forecast and a user-set equipment sales uplift. Uploads receive quality checks for invalid values, repeated dates, missing dates and unusual sales days. The dashboard shows holdout accuracy, loan interest and fees, scheduled payment dates, a sales downside scenario, a suggested cash buffer, and an optional side-by-side offer comparison with plain-language risk drivers. Market-day impact requires historic labels; weather impact requires matching historical weather fields. The example is Washington, DC bike-rental demand from 2011–2012, scaled to GHS—not Ghanaian shop sales. The equipment uplift is a scenario assumption, not a measured causal effect.
 
 ## Evaluation and limitations
 
