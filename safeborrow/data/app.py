@@ -16,33 +16,51 @@ from forecasting import forecast_sales, parse_sales_csv, train_sales_model, fetc
 st.set_page_config(page_title="SafeBorrow", layout="wide")
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
-:root { --ink:#18312f; --muted:#637874; --teal:#087f70; --teal-soft:#e7f4f0; --line:#e2ebe7; }
-.stApp { background:radial-gradient(ellipse at 92% 0%,#e6f2ed 0,transparent 34%),linear-gradient(180deg,#f8faf9 0%,#f4f7f5 100%); color:var(--ink); }
-.block-container { max-width:1360px; padding-top:2.4rem; padding-bottom:3.5rem; }
-html, body, [class*="css"] { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-h1,h2,h3 { font-family:'Space Grotesk','Inter',sans-serif; color:var(--ink); letter-spacing:-.04em; }
-h1 { font-size:2.55rem !important; font-weight:700 !important; }
-h2 { font-size:1.5rem !important; font-weight:600 !important; }
-[data-testid="stSidebar"] { background:#edf4f1; border-right:1px solid #dce8e3; }
-[data-testid="stSidebar"] * { color:#18312f !important; }
-[data-testid="stSidebar"] h2 { font-family:'Space Grotesk','Inter',sans-serif; font-size:1.08rem !important; letter-spacing:-.02em; }
-[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p { color:#37534d !important; font-weight:600; }
-[data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea { background:#fff !important; color:#18312f !important; border-color:#d6e3dd !important; border-radius:10px !important; }
-[data-testid="stSidebar"] [data-baseweb="select"] > div { background:#fff !important; border-color:#d6e3dd !important; border-radius:10px !important; }
-[data-testid="stSidebar"] [data-testid="stSlider"] [role="slider"] { background:#087f70 !important; }
-[data-testid="stMetric"] { background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:18px; padding:20px 22px; box-shadow:0 8px 28px rgba(26,61,51,.055); }
-[data-testid="stMetricLabel"] p { color:var(--muted); font-weight:600; }
-[data-testid="stMetricValue"] { color:var(--ink); font-family:'Space Grotesk','Inter',sans-serif; }
-[data-testid="stVerticalBlockBorderWrapper"] { border-radius:20px; border-color:var(--line); background:rgba(255,255,255,.88); box-shadow:0 8px 28px rgba(26,61,51,.045); }
-.eyebrow { color:var(--teal); font-size:.74rem; text-transform:uppercase; letter-spacing:.16em; font-weight:700; margin-bottom:.45rem; }
-.subcopy { color:var(--muted); font-size:1.04rem; margin-top:-.55rem; }
-.risk-card { border-radius:20px; padding:22px 26px; margin:.75rem 0 1.15rem; box-shadow:0 8px 22px rgba(26,61,51,.045); }
-.risk-label { font-size:.76rem; text-transform:uppercase; letter-spacing:.13em; font-weight:700; opacity:.8; }
-.risk-number { font-family:'Space Grotesk','Inter',sans-serif; font-size:2.4rem; font-weight:700; line-height:1.2; margin:.3rem 0; letter-spacing:-.04em; }
-.risk-note { font-size:.88rem; opacity:.82; }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
+:root { --ink:#f6dfd5; --muted:#caa99e; --coral:#ff693e; --line:#63352d; --panel:#492621; --panel-2:#542c26; }
+.stApp { background:radial-gradient(ellipse at 50% -20%,#5a2a22 0,transparent 48%),#351a17; color:var(--ink); }
+.block-container { max-width:1480px; padding:1.4rem 3rem 3.5rem; animation:fadeUp .75s ease-out both; }
+html, body, [class*="css"] { font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+h1,h2,h3 { color:var(--ink); }
+h1 { font-family:'DM Serif Display',Georgia,serif; font-size:3.3rem !important; line-height:1.04 !important; font-weight:400 !important; letter-spacing:-.035em; }
+h2 { font-family:'DM Sans',sans-serif; font-size:1.42rem !important; font-weight:600 !important; letter-spacing:-.025em; }
+p, label, [data-testid="stCaptionContainer"] { color:var(--ink); }
+[data-testid="stSidebar"] { background:#291311; border-right:1px solid #63352d; }
+[data-testid="stSidebar"] * { color:#f6dfd5 !important; }
+[data-testid="stSidebar"] h2 { font-family:'DM Sans',sans-serif; font-size:1.08rem !important; letter-spacing:-.01em; }
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p { color:#e7c5b9 !important; font-weight:600; }
+[data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea { background:#492621 !important; color:#fff0e9 !important; border-color:#75443a !important; border-radius:11px !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] > div { background:#492621 !important; border-color:#75443a !important; border-radius:11px !important; }
+[data-testid="stSidebar"] [data-testid="stSlider"] [role="slider"] { background:var(--coral) !important; border-color:var(--coral) !important; }
+[data-testid="stMetric"] { background:var(--panel); border:1px solid var(--line); border-radius:17px; padding:19px 21px; box-shadow:0 10px 30px rgba(0,0,0,.14); animation:fadeUp .65s ease-out both; transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease; }
+[data-testid="stMetric"]:hover { transform:translateY(-4px); border-color:#b95235; box-shadow:0 15px 34px rgba(0,0,0,.22); }
+[data-testid="stMetricLabel"] p { color:#d4b6ab; font-weight:500; }
+[data-testid="stMetricValue"] { color:var(--coral); font-family:'DM Sans',sans-serif; font-weight:600; }
+[data-testid="stVerticalBlockBorderWrapper"] { border-radius:18px; border-color:var(--line); background:var(--panel); box-shadow:0 10px 30px rgba(0,0,0,.12); animation:fadeUp .8s ease-out both; }
+[data-testid="stAlert"] { background:#492621; border:1px solid #75443a; border-radius:14px; color:#f6dfd5; }
+[data-testid="stAlert"] p { color:#f6dfd5 !important; }
+[data-testid="stDownloadButton"] button { background:#ff693e; color:#351a17; border:0; border-radius:999px; font-weight:700; }
+[data-testid="stDownloadButton"] button:hover { background:#ff835e; color:#351a17; border:0; }
+.topbar { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #63352d; padding:.2rem 0 1.1rem; margin-bottom:2.8rem; color:#e9c5b9; }
+.brand { color:var(--coral); font-size:1.55rem; font-weight:600; letter-spacing:-.07em; }
+.brand-mark { color:#f6dfd5; margin-left:.18rem; }
+.top-note { color:#c59b8f; text-transform:uppercase; letter-spacing:.16em; font-size:.66rem; font-weight:700; }
+.eyebrow { color:var(--coral); font-size:.72rem; text-transform:uppercase; letter-spacing:.17em; font-weight:700; margin-bottom:.7rem; }
+.hero-title { color:var(--ink); font-family:'DM Serif Display',Georgia,serif; font-size:clamp(3.2rem,6vw,5.5rem); line-height:.98; letter-spacing:-.045em; text-align:center; margin:.4rem auto .75rem; max-width:1000px; animation:fadeUp .85s .08s ease-out both; }
+.hero-title em { color:var(--coral); font-weight:400; }
+.subcopy { color:#d0b2a7; font-size:1rem; text-align:center; margin:.75rem 0 1.5rem; animation:fadeUp .85s .18s ease-out both; }
+.risk-card { border:1px solid #814234; border-radius:18px; padding:20px 24px; margin:.65rem 0 1.1rem; box-shadow:0 10px 30px rgba(0,0,0,.14); animation:fadeUp .7s .12s ease-out both; }
+.risk-label { font-size:.75rem; text-transform:uppercase; letter-spacing:.13em; font-weight:700; opacity:.86; }
+.risk-number { font-family:'DM Sans',sans-serif; font-size:2.25rem; font-weight:700; line-height:1.2; margin:.25rem 0; letter-spacing:-.04em; }
+.risk-note { font-size:.87rem; opacity:.86; }
+.schedule-table { width:100%; border-collapse:collapse; color:#f2dcd2; font-size:.9rem; margin-top:.7rem; }
+.schedule-table th { color:#d19b89; font-size:.73rem; text-transform:uppercase; letter-spacing:.08em; text-align:left; padding:.7rem .45rem; border-bottom:1px solid #75443a; }
+.schedule-table td { padding:.8rem .45rem; border-bottom:1px solid #60362f; }
+.schedule-table tr:last-child td { border-bottom:0; }
 div[data-testid="stDataFrame"] { border-radius:14px; overflow:hidden; }
 button[kind="secondary"] { border-radius:11px; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.01ms !important; transition-duration:.01ms !important; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -197,8 +215,9 @@ risk, cash = missed_payment_risk(sims, plan, margin, daily_costs, start_cash)
 
 # ---------- Results ----------
 
-st.markdown('<div class="eyebrow">Cash-flow confidence for small businesses</div>', unsafe_allow_html=True)
-st.title("Know what you can safely borrow.")
+st.markdown('<div class="topbar"><div class="brand">safeborrow<span class="brand-mark">{</span></div><div class="top-note">Ghana · Small business finance</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="eyebrow" style="text-align:center">Cash-flow clarity before you borrow</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">Know what you can<br/>borrow <em>with confidence.</em></div>', unsafe_allow_html=True)
 st.markdown(f'<div class="subcopy">{business_label} · See how a loan could fit before you accept the offer.</div>', unsafe_allow_html=True)
 
 feature_cols = bundle.get("feature_cols") or list(bundle["models"][0.5].feature_name_)
@@ -224,11 +243,11 @@ if use_market_days and not has_market_history:
     st.caption("Market dates are marked in the forecast, but the uploaded history does not label past market days, so the model cannot learn their sales effect yet. Add a MarketDay column (1/0) to your CSV to train that relationship.")
 
 if risk <= SAFE_RISK:
-    risk_colour, verdict, risk_bg = "#087f70", "Comfortable buffer", "#e7f4f0"
+    risk_colour, verdict, risk_bg = "#ff9672", "Comfortable buffer", "#4a2923"
 elif risk <= 0.25:
-    risk_colour, verdict, risk_bg = "#b97812", "Worth a closer look", "#fff4dc"
+    risk_colour, verdict, risk_bg = "#ffc174", "Worth a closer look", "#493322"
 else:
-    risk_colour, verdict, risk_bg = "#b94b45", "High chance of strain", "#fcebea"
+    risk_colour, verdict, risk_bg = "#ff8876", "High chance of strain", "#4c2521"
 
 safe = safe_amount(sims, rate, term_weeks, schedule, margin, daily_costs, start_cash)
 st.markdown(f'''<div class="risk-card" style="background:{risk_bg};color:{risk_colour}">
@@ -254,15 +273,17 @@ with chart_col:
         fig, ax = plt.subplots(figsize=(10, 4.1))
         low, high = np.percentile(cash, [10, 90], axis=0)
         typical = np.median(cash, axis=0)
-        ax.fill_between(dates, low, high, color="#b8ded2", alpha=.55, label="middle 80% of outcomes")
-        ax.plot(dates, typical, color="#087f70", linewidth=2.8, label="typical outcome")
-        ax.axhline(0, color="#cc6d61", linewidth=1.5, linestyle=(0, (4, 4)), label="zero cash")
-        ax.set_ylabel("Cash balance (GHS)", color="#647780", labelpad=10)
-        ax.grid(axis="y", color="#e8eeeb", linewidth=.8)
+        fig.patch.set_facecolor("#492621")
+        ax.set_facecolor("#492621")
+        ax.fill_between(dates, low, high, color="#ff693e", alpha=.24, label="middle 80% of outcomes")
+        ax.plot(dates, typical, color="#f6dfd5", linewidth=2.8, label="typical outcome")
+        ax.axhline(0, color="#ff693e", linewidth=1.5, linestyle=(0, (4, 4)), label="zero cash")
+        ax.set_ylabel("Cash balance (GHS)", color="#d4b6ab", labelpad=10)
+        ax.grid(axis="y", color="#63352d", linewidth=.8)
         ax.spines[["top", "right", "left"]].set_visible(False)
-        ax.spines["bottom"].set_color("#dce6e1")
-        ax.tick_params(colors="#647780", length=0, pad=8)
-        ax.legend(loc="upper left", frameon=False, ncol=2, fontsize=8)
+        ax.spines["bottom"].set_color("#75443a")
+        ax.tick_params(colors="#d4b6ab", length=0, pad=8)
+        ax.legend(loc="upper left", frameon=False, ncol=2, fontsize=8, labelcolor="#e9c5b9")
         fig.tight_layout()
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
@@ -271,14 +292,17 @@ rows = []
 for sch in SCHEDULE_NAMES:
     p, _ = repayment_plan(amount, rate, term_weeks, sch)
     r, _ = missed_payment_risk(sims, p, margin, daily_costs, start_cash)
-    rows.append({"Repayment timing": SCHEDULE_NAMES[sch],
-                 "Missed-payment chance": f"{r:.0%}",
-                 "Safe limit": f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash):,}"})
+    rows.append((SCHEDULE_NAMES[sch], f"{r:.0%}",
+                 f"GHS {safe_amount(sims, rate, term_weeks, sch, margin, daily_costs, start_cash):,}"))
+table_html = "<table class='schedule-table'><thead><tr><th>Repayment timing</th><th>Miss risk</th><th>Safe limit</th></tr></thead><tbody>"
+table_html += "".join(f"<tr><td>{timing}</td><td>{miss_risk}</td><td>{safe_limit}</td></tr>"
+                      for timing, miss_risk, safe_limit in rows)
+table_html += "</tbody></table>"
 with info_col:
     with st.container(border=True):
         st.subheader("Compare repayment timing")
         st.caption("The same loan can feel very different depending on when payments are due.")
-        st.dataframe(pd.DataFrame(rows).set_index("Repayment timing"), use_container_width=True)
+        st.markdown(table_html, unsafe_allow_html=True)
         st.caption("Safe limit keeps estimated risk at or below 10%.")
 
 st.markdown("---")
