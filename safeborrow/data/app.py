@@ -2,6 +2,7 @@
 
 Run locally with Streamlit, or deploy this file to Streamlit Community Cloud.
 """
+from datetime import date, timedelta
 from pathlib import Path
 
 import joblib
@@ -9,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from forecasting import forecast_sales, parse_sales_csv, train_sales_model, fetch_weather
 
 st.set_page_config(page_title="SafeBorrow", layout="wide")
 st.markdown("""
@@ -57,42 +60,28 @@ except FileNotFoundError:
     st.error("safeborrow_model.joblib not found. Run every cell in safeborrow.ipynb first (Step 13 saves it).")
     st.stop()
 
-models = bundle["models"]
-blocks = bundle["blocks"]
-BLOCK = bundle["block_size"]
-START = bundle["start"]
-FORECAST_YEAR = bundle["forecast_year"]
 SAFE_RISK = 0.10
 
 
-# ---------- Same functions as the notebook (keep them in sync) ----------
-def make_features(frame):
-    X = pd.DataFrame(index=frame.index)
-    X["dayofweek"] = frame["Date"].dt.dayofweek
-    X["day"] = frame["Date"].dt.day
-    X["month"] = frame["Date"].dt.month
-    X["weekofyear"] = frame["Date"].dt.isocalendar().week.astype(int).values
-    X["holiday"] = frame["holiday"].astype(int)
-    X["workingday"] = frame["workingday"].astype(int)
-    X["year"] = frame["Date"].dt.year - START.year
-    return X
+@st.cache_resource(show_spinner=False)
+def cached_upload_model(csv_bytes):
+    return train_sales_model(csv_bytes)
 
 
-@st.cache_data
-def simulate(start_month, term_weeks, n_sims=1000, seed=0):
-    """Forecast the loan period and simulate n_sims possible futures.
-    A fixed seed keeps the numbers steady while you move the sliders."""
-    start = pd.Timestamp(year=FORECAST_YEAR, month=start_month, day=1)
-    dates = pd.date_range(start, periods=term_weeks * 7, freq="D")
-    fut = pd.DataFrame({"Date": dates, "holiday": 0,
-                        "workingday": (dates.dayofweek < 5).astype(int)})
-    median = np.expm1(models[0.5].predict(make_features(fut)))
+@st.cache_data(ttl=1800, show_spinner=False)
+def cached_weather(latitude, longitude):
+    return fetch_weather(latitude, longitude, date.today())
 
-    rng = np.random.default_rng(seed)
-    n_blocks = int(np.ceil(len(median) / BLOCK))
-    picks = rng.integers(0, len(blocks), size=(n_sims, n_blocks))
-    r = blocks[picks].reshape(n_sims, -1)[:, :len(median)]
-    return dates, median, median * r
+
+GHANA_LOCATIONS = {
+    "Accra": (5.6037, -0.1870), "Kumasi": (6.6885, -1.6244),
+    "Tamale": (9.4034, -0.8424), "Takoradi": (4.8845, -1.7554),
+    "Cape Coast": (5.1053, -1.2466), "Koforidua": (6.0941, -0.2591),
+    "Ho": (6.6008, 0.4713), "Sunyani": (7.3349, -2.3123),
+    "Bolgatanga": (10.7856, -0.8514),
+}
+
+CSV_TEMPLATE = "Date,Sales,Market_Day,Temperature_C,Feels_Like_C,Humidity_Pct,Rain_mm,Wind_Speed_kmh,Weather\n2026-01-01,420,0,29,32,75,0,12,2\n"
 
 
 def repayment_plan(amount, monthly_rate, term_weeks, schedule):
@@ -133,6 +122,14 @@ SCHEDULE_NAMES = {"daily": "Every day", "weekly": "Every week", "end": "All at t
 
 # ---------- Inputs ----------
 with st.sidebar:
+    st.header("Sales forecast")
+    data_source = st.radio("Sales history", ["Example business", "Upload a CSV"])
+    uploaded_file = None
+    if data_source == "Upload a CSV":
+        uploaded_file = st.file_uploader("Daily sales history", type=["csv"],
+                                         help="Required: Date and Sales. Add optional market and weather columns for a more tailored forecast.")
+        st.download_button("Download CSV template", CSV_TEMPLATE, "safeborrow_sales_template.csv", "text/csv")
+
     st.header("Your business")
     margin = st.slider("Profit margin (%)", 5, 60, 25) / 100
     daily_costs = st.number_input("Daily costs: rent, transport, family (GHS)", 0, 2000, 50, step=10)
@@ -142,18 +139,89 @@ with st.sidebar:
     amount = st.slider("Loan amount (GHS)", 50, 3000, 800, step=50)
     rate = st.slider("Interest per month (%)", 0.0, 30.0, 10.0, step=0.5) / 100
     term_weeks = st.slider("Loan length (weeks)", 1, 12, 4)
-    start_month = st.selectbox("Loan starts in", range(1, 13), index=4,
-                               format_func=lambda m: pd.Timestamp(2000, m, 1).strftime("%B"))
+    today = date.today()
+    loan_start = st.date_input("Loan starts on", value=today,
+                               min_value=today, max_value=today + timedelta(days=9))
     schedule = st.radio("Repayment schedule", list(SCHEDULE_NAMES), format_func=SCHEDULE_NAMES.get)
+    sales_uplift = st.slider("Sales increase from new equipment (%)", 0, 30, 10, step=5) / 100
 
-# ---------- Results ----------
-dates, median, sims = simulate(start_month, term_weeks)
+    st.header("Local market context")
+    location = st.selectbox("Business location", list(GHANA_LOCATIONS))
+    use_market_days = st.checkbox("Include market days", value=False)
+    market_interval = None
+    next_market_date = None
+    if use_market_days:
+        market_interval = st.selectbox("Market day repeats every", [2, 3, 4, 5, 6, 7, 14], index=4,
+                                       format_func=lambda days: f"{days} days")
+        next_market_date = st.date_input("Next market day", value=loan_start,
+                                         min_value=today, max_value=loan_start + timedelta(days=14))
+
+if data_source == "Upload a CSV":
+    if uploaded_file is None:
+        st.info("Upload at least 56 days of daily sales. The template shows the required and optional columns.")
+        st.stop()
+    csv_bytes = uploaded_file.getvalue()
+    try:
+        with st.spinner("Learning your sales pattern from the uploaded history…"):
+            bundle = cached_upload_model(csv_bytes)
+        _, weather_fields, has_market_history = parse_sales_csv(csv_bytes)
+    except Exception as exc:
+        st.error(f"Could not use this sales file: {exc}")
+        st.stop()
+    business_label = uploaded_file.name
+else:
+    business_label = "Example bike-rental business"
+    weather_fields = [name for name in bundle.get("feature_cols", [])
+                      if name in ("temperature_c", "feels_like_c", "humidity_pct", "rain_mm", "wind_speed_kmh", "weather")]
+    has_market_history = bundle.get("has_market_history", False)
+
+weather_error = None
+try:
+    weather_forecast = cached_weather(*GHANA_LOCATIONS[location])
+except Exception as exc:
+    weather_forecast = None
+    weather_error = str(exc)
+
+try:
+    dates, median, sims, future_features, weather_used = forecast_sales(
+        bundle, loan_start, term_weeks, market_interval, next_market_date,
+        weather=weather_forecast)
+except Exception as exc:
+    st.error(f"Could not create this forecast: {exc}")
+    st.stop()
+
+median *= 1 + sales_uplift
+sims *= 1 + sales_uplift
 plan, total = repayment_plan(amount, rate, term_weeks, schedule)
 risk, cash = missed_payment_risk(sims, plan, margin, daily_costs, start_cash)
 
+# ---------- Results ----------
+
 st.markdown('<div class="eyebrow">Cash-flow confidence for small businesses</div>', unsafe_allow_html=True)
 st.title("Know what you can safely borrow.")
-st.markdown('<div class="subcopy">See how a loan could fit your business before you accept the offer.</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="subcopy">{business_label} · See how a loan could fit before you accept the offer.</div>', unsafe_allow_html=True)
+
+feature_cols = bundle.get("feature_cols") or list(bundle["models"][0.5].feature_name_)
+if not bundle.get("uploaded") and not any(
+        name in feature_cols for name in ("temperature_c", "feels_like_c", "humidity_pct", "weather")):
+    st.warning("The saved example model predates the Ghana holiday and weather features. Rerun the updated training notebook once to train those effects into the example forecast.")
+if weather_error:
+    st.warning("Live weather is unavailable right now. The forecast continues without current weather data.")
+elif weather_forecast is not None:
+    first_week = weather_forecast.loc[
+        (weather_forecast.index >= pd.Timestamp(loan_start)) &
+        (weather_forecast.index < pd.Timestamp(loan_start) + pd.Timedelta(days=7))]
+    if not first_week.empty:
+        avg_temp = first_week["temperature_c"].mean()
+        rainy_days = int((first_week["rain_mm"] >= 1).sum())
+        st.info(f"{location} weather for the first loan week: about {avg_temp:.0f}°C on average, with rain expected on {rainy_days} of 7 days. "
+                + ("Weather is included in the sales forecast." if weather_used else "Weather is shown for context; this model has no matching historical weather data to learn its sales impact."))
+        st.caption("Weather forecast: Open-Meteo. Future days beyond the forecast window use the model's typical conditions.")
+        if not bundle.get("uploaded") and weather_used:
+            st.caption("The example weather response was learned from historical bike-rental data; your own sales and weather history will provide a better business-specific estimate.")
+
+if use_market_days and not has_market_history:
+    st.caption("Market dates are marked in the forecast, but the uploaded history does not label past market days, so the model cannot learn their sales effect yet. Add a MarketDay column (1/0) to your CSV to train that relationship.")
 
 if risk <= SAFE_RISK:
     risk_colour, verdict, risk_bg = "#087f70", "Comfortable buffer", "#e7f4f0"
@@ -214,4 +282,4 @@ with info_col:
         st.caption("Safe limit keeps estimated risk at or below 10%.")
 
 st.markdown("---")
-st.caption("Illustrative estimate using historical bike-rental demand patterns scaled to GHS. Actual sales and outcomes may differ. Assumes the loan funds are spent immediately.")
+st.caption("Ghana public holidays are flagged in the calendar. The selected equipment uplift is an assumption applied to forecast sales. Actual demand and loan outcomes may differ. Assumes the loan funds are spent immediately.")

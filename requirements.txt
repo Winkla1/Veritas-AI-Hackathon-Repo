@@ -1,8 +1,10 @@
 joblib
 ipykernel
+holidays
 lightgbm
 matplotlib
 numpy
 pandas
+requests
 scikit-learn
 streamlit

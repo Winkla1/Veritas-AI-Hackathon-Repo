@@ -20,3 +20,9 @@ On this Mac, double-click `SafeBorrow.app` in the repository folder. It starts S
 From the repository root, run `streamlit run safeborrow/data/app.py` to start it manually. If the saved model is missing, run the training notebook first so it creates `safeborrow/data/safeborrow_model.joblib`.
 
 For notebook development, install the packages in `requirements.txt` into `.venv`. On macOS, LightGBM also needs the OpenMP runtime (`brew install libomp`).
+
+## Use your own business data
+
+In the app sidebar, choose **Upload a CSV** and provide at least 56 days of daily history. `Date` and `Sales` are required. Optional columns are `Market_Day` (1/0), `Temperature_C`, `Feels_Like_C`, `Humidity_Pct`, `Rain_mm`, `Wind_Speed_kmh`, and numeric `Weather` categories (1 clear, 2 cloudy, 3 rain, 4 storm). Ghana public holidays are added automatically. For the model to learn a market-day sales effect, include past market days in `Market_Day`; otherwise the app only marks future market dates.
+
+The app requests a live 16-day forecast from [Open-Meteo](https://open-meteo.com/en/docs) for the selected Ghana location. Its forecast influences the sales estimate only when the saved model or uploaded CSV has matching historical weather fields. For the updated example model, rerun all cells in `safeborrow/data/safeborrow.ipynb` once to regenerate `safeborrow_model.joblib` with Ghana holiday and weather features.
