@@ -4,7 +4,7 @@
 
 **Track:** AI + Finance
 
-**Team:** Pierre Awoniyi, Joshua Nwabofu, and Michelle Okyere
+**Team:** Pierre Awoniyi, Joshua Areh, and Michelle Okyere
 
 SafeBorrow helps business owners explore whether a proposed loan could fit their cash flow. It forecasts sales, models repayments against business costs and available cash, and lets users compare different loan scenarios. It is a planning prototype, not a credit-scoring or loan-approval system.
 
